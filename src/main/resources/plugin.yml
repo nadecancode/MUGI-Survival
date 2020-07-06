@@ -1,0 +1,6 @@
+name: Survival
+version: ${project.version}
+main: me.allen.survival.Survival
+api-version: 1.16
+authors: [MUGICON]
+description: Custom Survival Mechanics for MUGICRAFT
