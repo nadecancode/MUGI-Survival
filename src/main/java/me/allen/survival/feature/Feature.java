@@ -24,7 +24,7 @@ public abstract class Feature implements Listener {
 
         Bukkit.getPluginManager()
                 .registerEvents(this, this.plugin);
-        CommandHandler.registerClass(this.getClass());
+        CommandHandler.registerClass(this.getClass(), this);
         return true;
     }
 

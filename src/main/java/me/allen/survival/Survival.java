@@ -5,6 +5,7 @@ import lombok.Getter;
 import me.allen.survival.feature.Feature;
 import me.allen.survival.util.ClassUtil;
 import me.allen.survival.util.command.CommandHandler;
+import me.allen.survival.util.command.util.event.villager.VillagerTradeListener;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,6 +25,7 @@ public class Survival extends JavaPlugin {
         long before = System.currentTimeMillis();
         CommandHandler.init(this);
         this.loadedFeatures = Sets.newHashSet();
+        new VillagerTradeListener(this);
         ClassUtil
                 .getClassesInPackage(this, "me.allen.survival.feature.impl")
                 .forEach(featureClass -> {
@@ -35,7 +37,7 @@ public class Survival extends JavaPlugin {
                             Bukkit.getConsoleSender().sendMessage(ChatColor.WHITE + "  Loaded Feature `" + featureClass.getSimpleName() + "`");
                         }
                     } catch (Exception exception) {
-                        exception.printStackTrace();
+                        if (!(exception instanceof IllegalArgumentException)) exception.printStackTrace(); // IllegalArgumentException doesn't affect anything in this case
                     }
                 });
         Bukkit

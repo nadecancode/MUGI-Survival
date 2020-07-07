@@ -24,14 +24,17 @@ final class CommandData {
     private Method method;
 	@Getter
     private boolean consoleAllowed;
+	@Getter
+	private Object object;
 
-	public CommandData(Command commandAnnotation, List<ParameterData> parameters, Method method,
+	public CommandData(Command commandAnnotation, List<ParameterData> parameters, Method method, Object object,
 			boolean consoleAllowed) {
 		this.names = commandAnnotation.names();
 		this.permissionNode = commandAnnotation.permissionNode();
 		this.async = commandAnnotation.async();
 		this.parameters = parameters;
 		this.method = method;
+		this.object = object;
 		this.consoleAllowed = consoleAllowed;
 	}
 
@@ -126,7 +129,7 @@ final class CommandData {
 
 		try {
 			// null = static method.
-			method.invoke(null, transformedParameters.toArray());
+			method.invoke(this.object, transformedParameters.toArray());
 		} catch (Exception e) {
 			sender.sendMessage(ChatColor.RED + "It appears there was some issues processing your command...");
 			e.printStackTrace();

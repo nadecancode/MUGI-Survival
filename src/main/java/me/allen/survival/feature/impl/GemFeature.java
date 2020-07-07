@@ -2,7 +2,10 @@ package me.allen.survival.feature.impl;
 
 import com.google.common.collect.Sets;
 import de.tr7zw.changeme.nbtapi.NBTItem;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import me.allen.survival.Survival;
+import me.allen.survival.event.gem.GemAdvanceEvent;
 import me.allen.survival.feature.Feature;
 import me.allen.survival.util.ItemBuilder;
 import org.bukkit.Bukkit;
@@ -17,12 +20,13 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.inventory.*;
-import org.bukkit.inventory.*;
+import org.bukkit.inventory.FurnaceInventory;
+import org.bukkit.inventory.FurnaceRecipe;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.RecipeChoice;
 
-import java.applet.Applet;
-import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 public class GemFeature extends Feature {
@@ -47,12 +51,14 @@ public class GemFeature extends Feature {
 
     private Set<NamespacedKey> registeredNamespacedKeys;
 
+    private final Function<ItemStack, Boolean> GEM_CHECKER = ((itemStack) -> itemStack != null && !itemStack.getType().equals(Material.AIR) && new NBTItem(itemStack).hasKey(GEM_ITEM_NBT_KEY));
+
     @Override
     protected boolean onEnable() {
         this.registeredNamespacedKeys = Sets.newHashSet();
 
         for (Material material : Material.values()) {
-            if (material.name().toUpperCase().contains("SWORD")) {
+            if (GemApplicableType.matchApplicableType(material) != null) {
                 NamespacedKey namespacedKey = new NamespacedKey(this.plugin, "survival-gem-recipe-" + material.name().toLowerCase().replace("_", "-"));
                 Bukkit.getServer().addRecipe(new FurnaceRecipe(namespacedKey, new ItemStack(material), new RecipeChoice.ExactChoice(GEM_ITEM), 0.0F, 20 * 10).setInput(material));
                 this.registeredNamespacedKeys.add(namespacedKey);
@@ -69,13 +75,13 @@ public class GemFeature extends Feature {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPrepareCraft(PrepareItemCraftEvent event) {
-        if (Stream.of(event.getInventory().getStorageContents()).anyMatch(itemStack -> itemStack.isSimilar(GEM_ITEM))) event.getInventory().setResult(null);
+        if (Stream.of(event.getInventory().getStorageContents()).anyMatch(GEM_CHECKER::apply)) event.getInventory().setResult(null);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onCraft(CraftItemEvent event) {
         if (event.isCancelled()) return;
-        if (Stream.of(event.getInventory().getStorageContents()).anyMatch(itemStack -> itemStack.isSimilar(GEM_ITEM))) event.setCancelled(true);
+        if (Stream.of(event.getInventory().getStorageContents()).anyMatch(GEM_CHECKER::apply)) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -86,11 +92,9 @@ public class GemFeature extends Feature {
 
         ItemStack smelting = furnace.getInventory().getSmelting(), fuel = furnace.getInventory().getFuel();
 
-        if (fuel != null && fuel.isSimilar(GEM_ITEM)) {
-            if (smelting != null && !smelting.getType().name().toUpperCase().contains("SWORD")) {
-                event.setBurning(false);
-                event.setBurnTime(0);
-                event.setCancelled(true);
+        if (fuel != null && GEM_CHECKER.apply(fuel)) {
+            if (smelting != null && GemApplicableType.matchApplicableType(smelting.getType()) != null) {
+                event.setBurnTime(event.getBurnTime() / 8); // Coal burn time / 8 means only one item per gem since coal is 8 items
             }
         }
     }
@@ -99,68 +103,9 @@ public class GemFeature extends Feature {
     public void onFurnaceSmelt(FurnaceSmeltEvent event) {
         if (event.isCancelled()) return;
 
-        if (!event.getSource().getType().name().toUpperCase().contains("SWORD")) return;
+        ItemStack source = event.getSource();
 
-        ItemStack source = event.getSource(), result = source.clone();
-
-        int sharpnessLevel = source.getEnchantmentLevel(Enchantment.DAMAGE_ALL);
-        if (sharpnessLevel <= 0) { // If the item doesn't have sharpness at all then just give 100% chance
-            result.addUnsafeEnchantment(Enchantment.DAMAGE_ALL, 1);
-        } else {
-            double chance = 0.5D / (Math.max((sharpnessLevel - 3), 0.5D) * 2); // 50% base chance / ((2 * max((current sharpness level - 3, 0.5)))
-            // Explanation: Base chance is 50%, and as the sharpness level is less than or equal to 3, the chance is automatically "approximately" 90% (As sharpness 1-3 are easy to get)
-            // As the sharpness level gets greater than 3, the chance starts to get multiplied by a factor of 1 / (2(n-3)) where n is the sharpness level
-
-            double random = Math.random();
-            if (random <= chance) {
-                result
-                        .addUnsafeEnchantment(Enchantment.DAMAGE_ALL, sharpnessLevel + 1);
-            }
-        }
-
-        event.setResult(result);
-    }
-
-    @EventHandler
-    public void onInventoryClick(InventoryClickEvent event) {
-        if (event.isCancelled()) return;
-
-        if (!event.getSlotType().equals(InventoryType.SlotType.RESULT) || event.getInventory().getType() != InventoryType.FURNACE) {
-            return;
-        }
-
-        if (!(event.getWhoClicked() instanceof Player)) {
-            return;
-        }
-
-        ItemStack result = event.getCurrentItem();
-        if (result != null && result.getEnchantmentLevel(Enchantment.DAMAGE_ALL) >= 1) {
-            Furnace furnace = (Furnace) event.getInventory().getHolder();
-
-            if (furnace == null) return;
-
-            furnace.setBurnTime((short) 0);
-            furnace.setCookTime((short) 0);
-            furnace.update();
-        }
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onHopperRetrieveFurnace(InventoryMoveItemEvent event) {
-        if (event.isCancelled()) return;
-
-        if (event.getSource().getType().equals(InventoryType.FURNACE)) {
-            if (event.getItem().getEnchantmentLevel(Enchantment.DAMAGE_ALL) >= 1) {
-                FurnaceInventory furnaceInventory = (FurnaceInventory) event.getSource();
-                Furnace furnace = furnaceInventory.getHolder();
-
-                if (furnace == null) return;
-
-                furnace.setBurnTime((short) 0);
-                furnace.setCookTime((short) 0);
-                furnace.update();
-            }
-        }
+        if (applyGem(source, 1)) event.setResult(source);
     }
 
     @EventHandler(priority = EventPriority.MONITOR) // Monitor because I want it to be called at last, I don't want to create some Gem duplications by exploiting the protection plugin mechanics
@@ -172,17 +117,72 @@ public class GemFeature extends Feature {
 
         Player player = event.getPlayer();
 
-        double chance = 0.1D; // Base chance is 5%
+        double chance = 0.1D; // Base chance is 10%
 
         ItemStack mainHandItem = player.getInventory().getItemInMainHand();
 
-        if (mainHandItem.getEnchantmentLevel(Enchantment.SILK_TOUCH) > 0) chance = 0.01D;
+        if (mainHandItem.getEnchantmentLevel(Enchantment.SILK_TOUCH) > 0 || !block.getType().equals(Material.STONE)) chance *= 0.2D; // 1/5 Chance with Silk Touch and Non-Stone nerf
 
         if (Math.random() < chance) {
-            player
-                    .getInventory()
-                    .addItem(GEM_ITEM);
+            block.getWorld().dropItemNaturally(block.getLocation(), GEM_ITEM);
             player.sendMessage(ChatColor.GREEN + "You found a " + ChatColor.BOLD + "LV.1 GEM" + ChatColor.GREEN + " from mining!");
+        }
+    }
+
+    public boolean applyGem(ItemStack itemStack, int gemLevel) {
+        GemApplicableType applicableType = GemApplicableType.matchApplicableType(itemStack.getType());
+
+        if (applicableType == null) return false;
+
+        Enchantment applicationEnchantment = applicableType.getApplicableEnchantment();
+
+        int enchantmentLevel = itemStack.getEnchantmentLevel(applicationEnchantment);
+        if (enchantmentLevel <= 0) { // If the item doesn't have sharpness at all then just give 100% chance
+            itemStack.addUnsafeEnchantment(applicationEnchantment, 1);
+        } else {
+            double chance = 0.5D / (Math.max((enchantmentLevel - 3), 0.2) * 2); // 50% base chance / ((2 * max((current enchantment level - 3, 0.2)))
+            // Explanation: Base chance is 50%, and as the enchantment level is less than or equal to 3, the chance is automatically "approximately" 90% (As enchantment 1-3 are easy to get)
+            // As the enchantment level gets greater than 3, the chance starts to get multiplied by a factor of 1 / (2(n-3)) where n is the enchantment level
+
+            if (applicableType == GemApplicableType.TOOL && enchantmentLevel > 4) chance *= chance; // According to the conversation in the discord, square the base chance will give a fair depreciation & appreciation value
+            else if (applicableType == GemApplicableType.BOW && enchantmentLevel > 3) chance *= 0.25D; // Assuming full charges, the fair value is 1/4 of the sword sharpness appreciation & depreciation
+
+            double random = Math.random();
+            if (random <= chance) {
+                GemAdvanceEvent event = new GemAdvanceEvent(applicableType, itemStack);
+                if (event.callEvent())
+                    event.getTargetItem()
+                        .addUnsafeEnchantment(applicationEnchantment, enchantmentLevel + 1);
+            }
+        }
+
+        return true;
+    }
+
+    @RequiredArgsConstructor
+    @Getter
+    public enum GemApplicableType {
+        SWORD(Enchantment.DAMAGE_ALL),
+        BOW(Enchantment.ARROW_DAMAGE),
+        ARMOR(Enchantment.PROTECTION_ENVIRONMENTAL),
+        TOOL(Enchantment.DIG_SPEED);
+
+        private final Enchantment applicableEnchantment;
+
+        public static GemApplicableType matchApplicableType(Material material) {
+            String materialName = material.name().toUpperCase();
+
+            if (materialName.endsWith("SWORD")) {
+                return  GemApplicableType.SWORD;
+            } else if (materialName.endsWith("BOW")) {
+                return GemApplicableType.BOW;
+            //} else if (materialName.endsWith("HELMET") || materialName.endsWith("CHESTPLATE") || materialName.endsWith("LEGGINS") || materialName.endsWith("BOOTS")) {
+                //applicableType = GemApplicableType.ARMOR;
+            } else if (materialName.endsWith("SHOVEL") || materialName.endsWith("HOE") || materialName.endsWith("PICKAXE") || materialName.endsWith("AXE")) { // Order here matters for PICKAXE and AXE because PICKAXE contains AXE
+                return GemApplicableType.TOOL;
+            } else {
+                return null;
+            }
         }
     }
 }

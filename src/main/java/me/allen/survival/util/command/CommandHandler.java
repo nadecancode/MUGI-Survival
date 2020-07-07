@@ -137,12 +137,16 @@ public final class CommandHandler implements Listener {
 	 *
 	 * @param registeredClass The class to scan/register.
 	 */
-	public static void registerClass(final Class<?> registeredClass) {
+	public static void registerClass(final Class<?> registeredClass, Object object) {
 		for (final Method method : registeredClass.getMethods()) {
 			if (method.getAnnotation(Command.class) != null) {
-				registerMethod(method);
+				registerMethod(method, object);
 			}
 		}
+	}
+
+	public static void registerClass(final Class<?> registeredClass) {
+		registerClass(registeredClass, null);
 	}
 
 	/**
@@ -150,7 +154,7 @@ public final class CommandHandler implements Listener {
 	 *
 	 * @param method The method to register (if applicable)
 	 */
-	protected static void registerMethod(final Method method) {
+	protected static void registerMethod(final Method method, final Object object) {
 		final Command commandAnnotation = method.getAnnotation(Command.class);
 		final List<ParameterData> parameterData = new ArrayList<>();
 
@@ -174,11 +178,11 @@ public final class CommandHandler implements Listener {
 			}
 		}
 
-		commands.add(new CommandData(commandAnnotation, parameterData, method,
+		commands.add(new CommandData(commandAnnotation, parameterData, method, object,
 				method.getParameterTypes()[0].isAssignableFrom(Player.class)
 				));
 
-		Collections.sort(commands, (o1, o2) -> (o2.getName().length() - o1.getName().length()));
+		commands.sort((o1, o2) -> (o2.getName().length() - o1.getName().length()));
 	}
 
 	/**
