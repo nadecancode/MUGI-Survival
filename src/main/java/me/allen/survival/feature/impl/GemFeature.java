@@ -92,11 +92,14 @@ public class GemFeature extends Feature {
 
         ItemStack smelting = furnace.getInventory().getSmelting(), fuel = furnace.getInventory().getFuel();
 
-        if (fuel != null && GEM_CHECKER.apply(fuel)) {
-            if (smelting != null && GemApplicableType.matchApplicableType(smelting.getType()) != null) {
-                event.setBurnTime(event.getBurnTime() / 8); // Coal burn time / 8 means only one item per gem since coal is 8 items
-            }
-        }
+        if (smelting == null) return;
+
+        boolean isGem = GEM_CHECKER.apply(fuel);
+        GemApplicableType gemApplicableType = GemApplicableType.matchApplicableType(smelting.getType());
+
+        if (gemApplicableType != null && !isGem) event.setCancelled(true); // Override the Vanilla recipe, and also check if an item is upgradable but the fuel is not gem, in that case just cancel it
+
+        if (fuel != null && isGem && gemApplicableType != null)  event.setBurnTime(event.getBurnTime() / 8); // Coal burn time / 8 means only one item per gem since coal is 8 items
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
